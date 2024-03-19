@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"unsafe"
 
 	"bou.ke/monkey"
@@ -35,24 +34,16 @@ func (r Record) Type() reflect.Type {
 const allocRecCap = 1024 * 1024 * 1024 * 1
 
 var (
-	allocRecords    []Record
-	allocRecordsLen atomic.Int32
-	hookEnabled     atomic.Bool
+	allocRecords []Record
+	hookEnabled  bool
 )
 
 func addRec(k reflect.Kind, record Record) {
-	if k < reflect.Array || !hookEnabled.Load() {
+	if k < reflect.Array || !hookEnabled {
 		return
 	}
-	l := allocRecordsLen.Load()
-	if l < int32(cap(allocRecords)) {
-		for {
-			if allocRecordsLen.CompareAndSwap(l, l+1) {
-				allocRecords[l] = record
-				break
-			}
-			l = allocRecordsLen.Load()
-		}
+	if len(allocRecords) < cap(allocRecords) {
+		allocRecords = append(allocRecords, record)
 	} else {
 		fmt.Fprintf(os.Stderr, "alloc buffer overflow")
 	}
@@ -73,8 +64,7 @@ func newarray_p(tp *_type, n int) unsafe.Pointer {
 }
 
 func clobberfree_p(x unsafe.Pointer, size uintptr) {
-	for i := allocRecordsLen.Load() - 1; i >= 0; i-- {
-		r := allocRecords[i]
+	for _, r := range allocRecords {
 		if r.Base == uintptr(x) {
 			r.Base = 0
 			break
@@ -216,8 +206,7 @@ func findParent(n *Node, db *AllocDb) {
 
 	base := n.addr
 	var parents []*Node
-	for i := allocRecordsLen.Load() - 1; i >= 0; i-- {
-		r := allocRecords[i]
+	for _, r := range allocRecords {
 		t := r.Type()
 		for i := uintptr(0); i < t.Size()*uintptr(r.Dim); i += 8 {
 			if *(*uintptr)(unsafe.Pointer(r.Base + i)) == base {
@@ -286,7 +275,9 @@ func dumpNodeDeps(db *AllocDb, f *os.File) {
 }
 
 func EnableHook(v bool) bool {
-	return hookEnabled.Swap(v)
+	old := hookEnabled
+	hookEnabled = v
+	return old
 }
 
 func DumpRefsToDot(addr uintptr, outfile string) {
@@ -294,8 +285,7 @@ func DumpRefsToDot(addr uintptr, outfile string) {
 	defer EnableHook(old)
 
 	db := &AllocDb{all: map[uintptr]*Node{}, deps: map[string]map[string]struct{}{}}
-	for i := allocRecordsLen.Load() - 1; i >= 0; i-- {
-		r := allocRecords[i]
+	for _, r := range allocRecords {
 		db.all[r.Base] = &Node{addr: r.Base, typ: r.Type(), arr: r.IsArr}
 	}
 	n := db.all[addr]
