@@ -64,6 +64,9 @@ func newarray_p(tp *_type, n int) unsafe.Pointer {
 }
 
 func clobberfree_p(x unsafe.Pointer, size uintptr) {
+	if !Opt.TraceFree {
+		return
+	}
 	for _, r := range allocRecords {
 		if r.Base == uintptr(x) {
 			r.Base = 0
@@ -130,6 +133,7 @@ var Opt struct {
 	FuncInfo   bool
 	MaxAlloc   int
 	ScanGlobal bool
+	TraceFree  bool
 }
 
 func InitHooks() {
