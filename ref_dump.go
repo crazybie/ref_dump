@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -153,19 +155,38 @@ func InitHooks(maxAlloc int) {
 }
 
 type Node struct {
-	typ     reflect.Type
-	addr    uintptr
-	arr     bool
-	scanned bool
-	saved   bool
+	typ      reflect.Type
+	typeName string
+	addr     uintptr
+	arr      bool
+	scanned  bool
+	saved    bool
+}
+
+var closureReg = regexp.MustCompile("struct \\{ F uintptr;")
+
+type closure struct {
+	F uintptr
 }
 
 func (n *Node) TypeName() string {
-	name := n.typ.String()
-	if n.arr {
-		return "[]" + name
+	if len(n.typeName) > 0 {
+		return n.typeName
 	}
-	return name
+
+	name := n.typ.String()
+	if closureReg.MatchString(name) {
+		pc := (*closure)(unsafe.Pointer(n.addr))
+		f := runtime.FuncForPC(pc.F)
+		file, line := f.FileLine(pc.F)
+		name += fmt.Sprintf("\n(%s:%d)", file, line)
+	}
+	if n.arr {
+		n.typeName = "[]" + name
+	} else {
+		n.typeName = name
+	}
+	return n.typeName
 }
 
 type AllocDb struct {
