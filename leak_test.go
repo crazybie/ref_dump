@@ -23,7 +23,7 @@ func (m *MapBase) Foo() {
 }
 
 func TestDumpLeakedRefs(t *testing.T) {
-	ref_dump.HookGc()
+	ref_dump.InitHooks(0)
 
 	var leakedObj uintptr
 	func() {
@@ -33,5 +33,5 @@ func TestDumpLeakedRefs(t *testing.T) {
 		leakedObj = (uintptr)(unsafe.Pointer(m))
 	}()
 
-	ref_dump.DumpRefsToSvg(leakedObj, "leaks.svg")
+	ref_dump.DumpRefs(leakedObj, "leaks.svg")
 }

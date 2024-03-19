@@ -6,67 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"unsafe"
 
 	"bou.ke/monkey"
 )
-
-type _type struct {
-	size    uintptr
-	ptrdata uintptr
-}
-
-type slice struct {
-	array unsafe.Pointer
-	len   int
-	cap   int
-}
-
-//go:linkname newobject runtime.newobject
-func newobject(typ *_type) unsafe.Pointer
-
-//go:linkname newarray runtime.newarray
-func newarray(typ *_type, n int) unsafe.Pointer
-
-//go:linkname parsedebugvars runtime.parsedebugvars
-func parsedebugvars()
-
-//go:linkname gogetenv runtime.gogetenv
-func gogetenv(key string) string
-
-//go:linkname mallocgc runtime.mallocgc
-func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer
-
-//go:linkname clobberfree runtime.clobberfree
-func clobberfree(x unsafe.Pointer, size uintptr)
-
-//go:linkname growslice runtime.growslice
-func growslice(oldPtr unsafe.Pointer, newLen, oldCap, num int, et *_type) slice
-
-// base address for all 0-byte allocations
-var zerobase uintptr
-
-type writeBarrierT struct {
-	enabled bool
-}
-
-//go:linkname writeBarrier runtime.writeBarrierT
-var writeBarrier writeBarrierT
-
-//go:linkname add runtime.add
-func add(p unsafe.Pointer, x uintptr) unsafe.Pointer
-
-//go:linkname memclrNoHeapPointers runtime.memclrNoHeapPointers
-func memclrNoHeapPointers(ptr unsafe.Pointer, n uintptr)
-
-//go:linkname bulkBarrierPreWriteSrcOnly runtime.bulkBarrierPreWriteSrcOnly
-func bulkBarrierPreWriteSrcOnly(dst, src, size uintptr)
-
-//go:linkname memmove runtime.memmove
-func memmove(to, from unsafe.Pointer, n uintptr)
 
 type Record struct {
 	T     *_type
@@ -173,8 +118,11 @@ func growslice_p(oldPtr unsafe.Pointer, newLen, oldCap, num int, et *_type) slic
 	return slice{p, newLen, newcap}
 }
 
-func HookGc() {
-	allocRecords = make([]Record, 0, allocRecCap)
+func InitHooks(maxAlloc int) {
+	if maxAlloc == 0 {
+		maxAlloc = allocRecCap
+	}
+	allocRecords = make([]Record, 0, maxAlloc)
 
 	monkey.Patch(newobject, newobject_p)
 	monkey.Patch(newarray, newarray_p)
@@ -212,24 +160,43 @@ type AllocDb struct {
 	deps map[string]map[string]struct{}
 }
 
+func (db *AllocDb) addDep(tp string, dep string) {
+	if _, ok := db.deps[tp]; !ok {
+		db.deps[tp] = map[string]struct{}{}
+	}
+	db.deps[tp][dep] = struct{}{}
+}
+
 func findParent(n *Node, db *AllocDb) {
 	if n.scanned || n.addr == 0 {
 		return
 	}
 
+	base := n.addr
 	var parents []*Node
 	for _, r := range allocRecords {
 		t := r.Type()
 		for i := uintptr(0); i < t.Size()*uintptr(r.Dim); i += 8 {
-			if *(*uintptr)(unsafe.Pointer(r.Base + i)) == n.addr {
+			if *(*uintptr)(unsafe.Pointer(r.Base + i)) == base {
 				if p := db.all[r.Base]; p != nil {
 					parents = append(parents, p)
-
-					if _, ok := db.deps[p.TypeName()]; !ok {
-						db.deps[p.TypeName()] = map[string]struct{}{}
-					}
-					db.deps[p.TypeName()][n.TypeName()] = struct{}{}
+					db.addDep(p.TypeName(), n.TypeName())
 				}
+				break
+			}
+		}
+	}
+
+	for _, datap := range activeModules() {
+		for i := datap.data; i <= datap.edata; i += 8 {
+			if *(*uintptr)(unsafe.Pointer(i)) == base {
+				db.addDep("#GlobalDataSection", n.TypeName())
+				break
+			}
+		}
+		for i := datap.bss; i <= datap.ebss; i += 8 {
+			if *(*uintptr)(unsafe.Pointer(i)) == base {
+				db.addDep("#GlobalBssSection", n.TypeName())
 				break
 			}
 		}
@@ -277,20 +244,19 @@ func EnableHook(v bool) {
 	hookEnabled = v
 }
 
-func dumpRefs(addr2 uintptr, outfile string) {
+func dumpRefs(addr uintptr, outfile string) {
 	db := &AllocDb{all: map[uintptr]*Node{}, deps: map[string]map[string]struct{}{}}
 	for _, r := range allocRecords {
 		db.all[r.Base] = &Node{addr: r.Base, typ: r.Type(), arr: r.IsArr}
 	}
-	n := db.all[addr2]
+	n := db.all[addr]
 	findParent(n, db)
-	go func() {
-		file, _ := os.OpenFile(outfile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-		defer file.Close()
-		file.WriteString("digraph {\n")
-		dumpNodeDeps(db, file)
-		file.WriteString("}\n")
-	}()
+
+	file, _ := os.OpenFile(outfile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	defer file.Close()
+	file.WriteString("digraph {\n")
+	dumpNodeDeps(db, file)
+	file.WriteString("}\n")
 }
 
 func HexToUintptr(addr string) uintptr {
@@ -303,16 +269,17 @@ func HexToUintptr(addr string) uintptr {
 	return uintptr(addr1)
 }
 
-func DumpRefsToSvg(addr uintptr, outfile string) error {
+func DumpRefs(addr uintptr, outfile string) {
 	EnableHook(false)
 	defer EnableHook(true)
 
-	runtime.GC()
-
-	tmp := "tmp.dot"
-	dumpRefs(addr, tmp)
-	defer os.Remove(tmp)
-
-	c := exec.Command("dot", "-Tsvg", tmp, "-o", outfile)
-	return c.Run()
+	if strings.HasSuffix(outfile, ".svg") {
+		tmp := "tmp.dot"
+		dumpRefs(addr, tmp)
+		defer os.Remove(tmp)
+		c := exec.Command("dot", "-Tsvg", tmp, "-o", outfile)
+		c.Run()
+	} else {
+		dumpRefs(addr, outfile)
+	}
 }
