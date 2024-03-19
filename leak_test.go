@@ -24,7 +24,7 @@ func (m *MapBase) Foo() {
 }
 
 func TestDumpLeakedRefs(t *testing.T) {
-	ref_dump.InitHooks(0)
+	ref_dump.InitHooks()
 
 	var leakedObj uintptr
 	func() {
