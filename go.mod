@@ -1,4 +1,4 @@
-module go.crazybie/ref_dump
+module github.com/crazybie/ref_dump
 
 go 1.18
 
