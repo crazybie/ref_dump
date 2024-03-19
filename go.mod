@@ -1,5 +1,5 @@
-module crazybie/ref_dump
+module go.crazybie/ref_dump
 
-go 1.16
+go 1.18
 
 require bou.ke/monkey v1.0.2
