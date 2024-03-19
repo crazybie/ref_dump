@@ -136,14 +136,19 @@ func gogetenv_p(key string) string {
 	return ""
 }
 
-func InitHooks(maxAlloc int) {
+var Opt struct {
+	FuncInfo bool
+	MaxAlloc int
+}
+
+func InitHooks() {
 	EnableHook(false)
 	defer EnableHook(true)
 
-	if maxAlloc == 0 {
-		maxAlloc = allocRecCap
+	if Opt.MaxAlloc == 0 {
+		Opt.MaxAlloc = allocRecCap
 	}
-	allocRecords = make([]Record, maxAlloc)
+	allocRecords = make([]Record, Opt.MaxAlloc)
 
 	monkey.Patch(newobject, newobject_p)
 	monkey.Patch(newarray, newarray_p)
@@ -175,7 +180,7 @@ func (n *Node) TypeName() string {
 	}
 
 	name := n.typ.String()
-	if closureReg.MatchString(name) {
+	if Opt.FuncInfo && closureReg.MatchString(name) {
 		pc := (*closure)(unsafe.Pointer(n.addr))
 		f := runtime.FuncForPC(pc.F)
 		if f != nil {
