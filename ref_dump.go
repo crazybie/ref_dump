@@ -139,7 +139,7 @@ func InitHooks() {
 	if Opt.MaxAlloc == 0 {
 		Opt.MaxAlloc = allocRecCap
 	}
-	allocRecords = make([]Record, Opt.MaxAlloc)
+	allocRecords = make([]Record, 0, Opt.MaxAlloc)
 
 	monkey.Patch(newobject, newobject_p)
 	monkey.Patch(newarray, newarray_p)
