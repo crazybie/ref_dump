@@ -1,4 +1,4 @@
-module ref_dump
+module crazybie/ref_dump
 
 go 1.16
 
