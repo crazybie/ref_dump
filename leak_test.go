@@ -1,9 +1,10 @@
 package ref_dump_test
 
 import (
-	"ref_dump"
 	"testing"
 	"unsafe"
+
+	"github.com/crazybie/ref_dump"
 )
 
 type Info struct {

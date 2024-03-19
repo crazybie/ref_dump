@@ -23,8 +23,8 @@
 <!-- ref_dump_test.Info&#45;&gt;[]func() -->
 <g id="edge1" class="edge">
 <title>ref_dump_test.Info&#45;&gt;[]func()</title>
-<path fill="none" stroke="#33a6e9" d="M190.28,-215.7C190.28,-208.41 190.28,-199.73 190.28,-191.54"/>
-<polygon fill="#33a6e9" stroke="#33a6e9" points="193.78,-191.62 190.28,-181.62 186.78,-191.62 193.78,-191.62"/>
+<path fill="none" stroke="#94d135" d="M190.28,-215.7C190.28,-208.41 190.28,-199.73 190.28,-191.54"/>
+<polygon fill="#94d135" stroke="#94d135" points="193.78,-191.62 190.28,-181.62 186.78,-191.62 193.78,-191.62"/>
 </g>
 <!-- struct { F uintptr; R *ref_dump_test.MapBase } -->
 <g id="node4" class="node">
@@ -35,13 +35,13 @@
 <!-- []func()&#45;&gt;struct { F uintptr; R *ref_dump_test.MapBase } -->
 <g id="edge4" class="edge">
 <title>[]func()&#45;&gt;struct { F uintptr; R *ref_dump_test.MapBase }</title>
-<path fill="none" stroke="#c4471d" d="M190.28,-143.7C190.28,-136.41 190.28,-127.73 190.28,-119.54"/>
-<polygon fill="#c4471d" stroke="#c4471d" points="193.78,-119.62 190.28,-109.62 186.78,-119.62 193.78,-119.62"/>
+<path fill="none" stroke="#638151" d="M190.28,-143.7C190.28,-136.41 190.28,-127.73 190.28,-119.54"/>
+<polygon fill="#638151" stroke="#638151" points="193.78,-119.62 190.28,-109.62 186.78,-119.62 193.78,-119.62"/>
 </g>
 <!-- #GlobalBssSection -->
 <g id="node3" class="node">
 <title>#GlobalBssSection</title>
-<ellipse fill="red" stroke="#4fc31c" cx="190.28" cy="-306" rx="82.5" ry="18"/>
+<ellipse fill="red" stroke="#b6f913" cx="190.28" cy="-306" rx="82.5" ry="18"/>
 <text text-anchor="middle" x="190.28" y="-300.57" font-family="Times New Roman,serif" font-size="14.00">#GlobalBssSection</text>
 </g>
 <!-- #GlobalBssSection&#45;&gt;ref_dump_test.Info -->
@@ -59,8 +59,8 @@
 <!-- struct { F uintptr; R *ref_dump_test.MapBase }&#45;&gt;ref_dump_test.MapBase -->
 <g id="edge3" class="edge">
 <title>struct { F uintptr; R *ref_dump_test.MapBase }&#45;&gt;ref_dump_test.MapBase</title>
-<path fill="none" stroke="#0239f8" d="M190.28,-71.7C190.28,-64.41 190.28,-55.73 190.28,-47.54"/>
-<polygon fill="#0239f8" stroke="#0239f8" points="193.78,-47.62 190.28,-37.62 186.78,-47.62 193.78,-47.62"/>
+<path fill="none" stroke="#da8a0f" d="M190.28,-71.7C190.28,-64.41 190.28,-55.73 190.28,-47.54"/>
+<polygon fill="#da8a0f" stroke="#da8a0f" points="193.78,-47.62 190.28,-37.62 186.78,-47.62 193.78,-47.62"/>
 </g>
 </g>
 </svg>

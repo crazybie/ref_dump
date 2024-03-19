@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unsafe"
 
 	"bou.ke/monkey"
@@ -32,36 +33,46 @@ func (r Record) Type() reflect.Type {
 const allocRecCap = 1024 * 1024 * 1024 * 1
 
 var (
-	allocRecords []Record
-	hookEnabled  = true
+	allocRecords    []Record
+	allocRecordsLen atomic.Int32
+	hookEnabled     atomic.Bool
 )
+
+func addRec(k reflect.Kind, record Record) {
+	if k < reflect.Array || !hookEnabled.Load() {
+		return
+	}
+	l := allocRecordsLen.Load()
+	if l < int32(cap(allocRecords)) {
+		for {
+			if allocRecordsLen.CompareAndSwap(l, l+1) {
+				allocRecords[l] = record
+				break
+			}
+			l = allocRecordsLen.Load()
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "alloc buffer overflow")
+	}
+}
 
 func newobject_p(tp *_type) unsafe.Pointer {
 	t := _type2Type(tp)
 	r := mallocgc(tp.size, tp, true)
-	if t.Kind() < reflect.Array || !hookEnabled {
-		return r
-	}
-	if len(allocRecords) < cap(allocRecords) {
-		allocRecords = append(allocRecords, Record{tp, uintptr(r), false, 1})
-	}
+	addRec(t.Kind(), Record{tp, uintptr(r), false, 1})
 	return r
 }
 
 func newarray_p(tp *_type, n int) unsafe.Pointer {
 	t := _type2Type(tp)
 	r := mallocgc(tp.size*uintptr(n), tp, true)
-	if t.Kind() < reflect.Array || !hookEnabled {
-		return r
-	}
-	if len(allocRecords) < cap(allocRecords) {
-		allocRecords = append(allocRecords, Record{tp, uintptr(r), true, n})
-	}
+	addRec(t.Kind(), Record{tp, uintptr(r), true, n})
 	return r
 }
 
 func clobberfree_p(x unsafe.Pointer, size uintptr) {
-	for _, r := range allocRecords {
+	for i := allocRecordsLen.Load() - 1; i >= 0; i-- {
+		r := allocRecords[i]
 		if r.Base == uintptr(x) {
 			r.Base = 0
 			break
@@ -106,9 +117,7 @@ func growslice_p(oldPtr unsafe.Pointer, newLen, oldCap, num int, et *_type) slic
 		memclrNoHeapPointers(add(p, newlenmem), capmem-newlenmem)
 	} else {
 		p = mallocgc(capmem, et, true)
-		if hookEnabled {
-			allocRecords = append(allocRecords, Record{et, uintptr(p), true, newcap})
-		}
+		addRec(_type2Type(et).Kind(), Record{et, uintptr(p), true, newcap})
 		if lenmem > 0 && writeBarrier.enabled {
 			bulkBarrierPreWriteSrcOnly(uintptr(p), uintptr(oldPtr), lenmem-et.size+et.ptrdata)
 		}
@@ -118,23 +127,27 @@ func growslice_p(oldPtr unsafe.Pointer, newLen, oldCap, num int, et *_type) slic
 	return slice{p, newLen, newcap}
 }
 
+func gogetenv_p(key string) string {
+	if key == "GODEBUG" {
+		return "clobberfree=1"
+	}
+	return ""
+}
+
 func InitHooks(maxAlloc int) {
+	EnableHook(false)
+	defer EnableHook(true)
+
 	if maxAlloc == 0 {
 		maxAlloc = allocRecCap
 	}
-	allocRecords = make([]Record, 0, maxAlloc)
+	allocRecords = make([]Record, maxAlloc)
 
 	monkey.Patch(newobject, newobject_p)
 	monkey.Patch(newarray, newarray_p)
 	monkey.Patch(clobberfree, clobberfree_p)
 	monkey.Patch(growslice, growslice_p)
-
-	monkey.Patch(gogetenv, func(key string) string {
-		if key == "GODEBUG" {
-			return "clobberfree=1"
-		}
-		return ""
-	})
+	monkey.Patch(gogetenv, gogetenv_p)
 
 	parsedebugvars()
 }
@@ -174,7 +187,8 @@ func findParent(n *Node, db *AllocDb) {
 
 	base := n.addr
 	var parents []*Node
-	for _, r := range allocRecords {
+	for i := allocRecordsLen.Load() - 1; i >= 0; i-- {
+		r := allocRecords[i]
 		t := r.Type()
 		for i := uintptr(0); i < t.Size()*uintptr(r.Dim); i += 8 {
 			if *(*uintptr)(unsafe.Pointer(r.Base + i)) == base {
@@ -240,13 +254,17 @@ func dumpNodeDeps(db *AllocDb, f *os.File) {
 	}
 }
 
-func EnableHook(v bool) {
-	hookEnabled = v
+func EnableHook(v bool) bool {
+	return hookEnabled.Swap(v)
 }
 
-func dumpRefs(addr uintptr, outfile string) {
+func DumpRefsToDot(addr uintptr, outfile string) {
+	old := EnableHook(false)
+	defer EnableHook(old)
+
 	db := &AllocDb{all: map[uintptr]*Node{}, deps: map[string]map[string]struct{}{}}
-	for _, r := range allocRecords {
+	for i := allocRecordsLen.Load() - 1; i >= 0; i-- {
+		r := allocRecords[i]
 		db.all[r.Base] = &Node{addr: r.Base, typ: r.Type(), arr: r.IsArr}
 	}
 	n := db.all[addr]
@@ -270,16 +288,16 @@ func HexToUintptr(addr string) uintptr {
 }
 
 func DumpRefs(addr uintptr, outfile string) {
-	EnableHook(false)
-	defer EnableHook(true)
+	old := EnableHook(false)
+	defer EnableHook(old)
 
 	if strings.HasSuffix(outfile, ".svg") {
 		tmp := "tmp.dot"
-		dumpRefs(addr, tmp)
+		DumpRefsToDot(addr, tmp)
 		defer os.Remove(tmp)
 		c := exec.Command("dot", "-Tsvg", tmp, "-o", outfile)
 		c.Run()
 	} else {
-		dumpRefs(addr, outfile)
+		DumpRefsToDot(addr, outfile)
 	}
 }
