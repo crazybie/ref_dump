@@ -134,6 +134,7 @@ var Opt struct {
 	MaxAlloc   int
 	ScanGlobal bool
 	TraceFree  bool
+	MaxDepth   int
 }
 
 func InitHooks() {
@@ -203,8 +204,11 @@ func (db *AllocDb) addDep(tp string, dep string) {
 	db.deps[tp][dep] = struct{}{}
 }
 
-func findParent(n *Node, db *AllocDb) {
+func findParent(n *Node, db *AllocDb, depth int) {
 	if n.scanned || n.addr == 0 {
+		return
+	}
+	if Opt.MaxDepth > 0 && depth > Opt.MaxDepth {
 		return
 	}
 
@@ -242,7 +246,7 @@ func findParent(n *Node, db *AllocDb) {
 	n.scanned = true
 
 	for _, p := range parents {
-		findParent(p, db)
+		findParent(p, db, depth+1)
 	}
 }
 
@@ -293,7 +297,7 @@ func DumpRefsToDot(addr uintptr, outfile string) {
 		db.all[r.Base] = &Node{addr: r.Base, typ: r.Type(), arr: r.IsArr}
 	}
 	n := db.all[addr]
-	findParent(n, db)
+	findParent(n, db, 0)
 
 	file, _ := os.OpenFile(outfile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	defer file.Close()
