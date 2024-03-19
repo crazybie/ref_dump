@@ -178,8 +178,10 @@ func (n *Node) TypeName() string {
 	if closureReg.MatchString(name) {
 		pc := (*closure)(unsafe.Pointer(n.addr))
 		f := runtime.FuncForPC(pc.F)
-		file, line := f.FileLine(pc.F)
-		name += fmt.Sprintf("\n(%s:%d)", file, line)
+		if f != nil {
+			file, line := f.FileLine(pc.F)
+			name += fmt.Sprintf("\n(%s:%d)", file, line)
+		}
 	}
 	if n.arr {
 		n.typeName = "[]" + name
