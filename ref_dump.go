@@ -137,8 +137,9 @@ func gogetenv_p(key string) string {
 }
 
 var Opt struct {
-	FuncInfo bool
-	MaxAlloc int
+	FuncInfo   bool
+	MaxAlloc   int
+	ScanGlobal bool
 }
 
 func InitHooks() {
@@ -229,17 +230,19 @@ func findParent(n *Node, db *AllocDb) {
 		}
 	}
 
-	for _, datap := range activeModules() {
-		for i := datap.data; i <= datap.edata; i += 8 {
-			if *(*uintptr)(unsafe.Pointer(i)) == base {
-				db.addDep("#GlobalDataSection", n.TypeName())
-				break
+	if Opt.ScanGlobal {
+		for _, datap := range activeModules() {
+			for i := datap.data; i <= datap.edata; i += 8 {
+				if *(*uintptr)(unsafe.Pointer(i)) == base {
+					db.addDep("#GlobalDataSection", n.TypeName())
+					break
+				}
 			}
-		}
-		for i := datap.bss; i <= datap.ebss; i += 8 {
-			if *(*uintptr)(unsafe.Pointer(i)) == base {
-				db.addDep("#GlobalBssSection", n.TypeName())
-				break
+			for i := datap.bss; i <= datap.ebss; i += 8 {
+				if *(*uintptr)(unsafe.Pointer(i)) == base {
+					db.addDep("#GlobalBssSection", n.TypeName())
+					break
+				}
 			}
 		}
 	}
